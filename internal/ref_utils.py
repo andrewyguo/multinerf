@@ -17,7 +17,7 @@
 from internal import math
 import jax.numpy as jnp
 import numpy as np
-
+import math as py_math
 
 def reflect(viewdirs, normals):
   """Reflect view directions about normals.
@@ -52,7 +52,7 @@ def compute_weighted_mae(weights, normals, normals_gt):
 
 def generalized_binomial_coeff(a, k):
   """Compute generalized binomial coefficients."""
-  return np.prod(a - np.arange(k)) / np.math.factorial(k)
+  return np.prod(a - np.arange(k)) / py_math.factorial(k)
 
 
 def assoc_legendre_coeff(l, m, k):
@@ -69,16 +69,16 @@ def assoc_legendre_coeff(l, m, k):
   Returns:
     A float, the coefficient of the term corresponding to the inputs.
   """
-  return ((-1)**m * 2**l * np.math.factorial(l) / np.math.factorial(k) /
-          np.math.factorial(l - k - m) *
+  return ((-1)**m * 2**l * py_math.factorial(l) / py_math.factorial(k) /
+          py_math.factorial(l - k - m) *
           generalized_binomial_coeff(0.5 * (l + k + m - 1.0), l))
 
 
 def sph_harm_coeff(l, m, k):
   """Compute spherical harmonic coefficients."""
   return (np.sqrt(
-      (2.0 * l + 1.0) * np.math.factorial(l - m) /
-      (4.0 * np.pi * np.math.factorial(l + m))) * assoc_legendre_coeff(l, m, k))
+      (2.0 * l + 1.0) * py_math.factorial(l - m) /
+      (4.0 * np.pi * py_math.factorial(l + m))) * assoc_legendre_coeff(l, m, k))
 
 
 def get_ml_array(deg_view):

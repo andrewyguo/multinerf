@@ -69,11 +69,11 @@ NerfMLP.weight_init = 'glorot_uniform'
 PropMLP.weight_init = 'glorot_uniform'
 
 ## Training hyperparameters used in the paper:
-Config.batch_size = 16384
-Config.render_chunk_size = 16384
+Config.batch_size = 8192
+Config.render_chunk_size = 8192
 Config.lr_init = 1e-3
 Config.lr_final = 1e-5
-Config.max_steps = 500000
+Config.max_steps = 50000
 Config.checkpoint_every = 25000
 Config.lr_delay_steps = 2500
 Config.lr_delay_mult = 0.01
