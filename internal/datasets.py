@@ -155,6 +155,7 @@ def load_blender_posedata(data_dir, split=None):
   pose_file = path.join(data_dir, f'transforms{suffix}.json')
   with utils.open_file(pose_file, 'r') as fp:
     meta = json.load(fp)
+  print("opening file", pose_file)
   names = []
   poses = []
   for _, frame in enumerate(meta['frames']):
@@ -585,6 +586,7 @@ class LLFF(Dataset):
     else:
       # Attempt to load Blender/NGP format if COLMAP data not present.
       pose_data = load_blender_posedata(self.data_dir)
+      print(f"load_blender_posedata from {self.data_dir}")
     image_names, poses, pixtocam, distortion_params, camtype = pose_data
 
     # Previous NeRF results were generated with images sorted by filename,
@@ -604,12 +606,18 @@ class LLFF(Dataset):
     raw_testscene = False
     if config.rawnerf_mode:
       # Load raw images and metadata.
+      print("Calling raw_utils.load_raw_dataset")
+      factor = factor
+      print(f"ANDREW HARDCODED N_DOWNSAMPLE={factor}")
+      
       images, metadata, raw_testscene = raw_utils.load_raw_dataset(
           self.split,
           self.data_dir,
           image_names,
           config.exposure_percentile,
-          factor)
+          n_downsample=factor, # ANDREW HARDCODED 
+          use_sony=config.use_sony,
+        )
       self.metadata = metadata
 
     else:

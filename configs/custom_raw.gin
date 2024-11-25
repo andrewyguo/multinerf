@@ -1,9 +1,9 @@
 # General LLFF settings
-
+Config.use_sony = True 
 Config.dataset_loader = 'llff'
 Config.near = 0.
 Config.far = 1.
-Config.factor = 4
+Config.factor = 8
 Config.forward_facing = True
 
 Model.ray_shape = 'cylinder'

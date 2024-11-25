@@ -46,6 +46,7 @@ for module, configurables in configurables.items():
 @dataclasses.dataclass
 class Config:
   """Configuration flags for everything."""
+  use_sony: bool = False 
   dataset_loader: str = 'llff'  # The type of dataset loader to use.
   batching: str = 'all_images'  # Batch composition, [single_image, all_images].
   batch_size: int = 16384  # The number of rays/pixels in each batch.

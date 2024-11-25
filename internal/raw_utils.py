@@ -150,7 +150,8 @@ bilinear_demosaic_jax = jax.jit(lambda bayer: bilinear_demosaic(bayer, xnp=jnp))
 
 
 def load_raw_images(image_dir: str,
-                    image_names: Optional[Sequence[str]] = None
+                    image_names: Optional[Sequence[str]] = None,
+                    file_extension='dng',
                     ) -> Tuple[np.ndarray, Sequence[Mapping[str, Any]]]:
   """Loads raw images and their metadata from disk.
 
@@ -172,7 +173,7 @@ def load_raw_images(image_dir: str,
   # Load raw images (dng files) and exif metadata (json files).
   def load_raw_exif(image_name):
     base = os.path.join(image_dir, os.path.splitext(image_name)[0])
-    with utils.open_file(base + '.dng', 'rb') as f:
+    with utils.open_file(base + f'.{file_extension}', 'rb') as f:
       raw = rawpy.imread(f).raw_image
     with utils.open_file(base + '.json', 'rb') as f:
       exif = json.load(f)[0]
@@ -181,7 +182,7 @@ def load_raw_images(image_dir: str,
   if image_names is None:
     image_names = [
         os.path.basename(f)
-        for f in sorted(glob.glob(os.path.join(image_dir, '*.dng')))
+        for f in sorted(glob.glob(os.path.join(image_dir, f'*.{file_extension}')))
     ]
 
   data = [load_raw_exif(x) for x in image_names]
@@ -211,6 +212,71 @@ _RGB2XYZ = np.array([[0.4124564, 0.3575761, 0.1804375],
                      [0.2126729, 0.7151522, 0.0721750],
                      [0.0193339, 0.1191920, 0.9503041]])
 
+def process_exif_sony(
+    exifs: Sequence[Mapping[str, Any]]) -> MutableMapping[str, Any]:
+  """Processes list of raw image EXIF data into useful metadata dict.
+
+  Input should be a list of dictionaries loaded from JSON files.
+  These JSON files are produced by running
+    $ exiftool -json IMAGE.dng > IMAGE.json
+  for each input raw file.
+
+  We extract only the parameters relevant to
+  1. Rescaling the raw data to [0, 1],
+  2. White balance and color correction, and
+  3. Noise level estimation.
+
+  Args:
+    exifs: a list of dicts containing EXIF data as loaded from JSON files.
+
+  Returns:
+    meta: a dict of the relevant metadata for running RawNeRF.
+  """
+  meta = {}
+  exif = exifs[0]
+
+  meta['AsShotNeutral'] = np.array([[exif['RedBalance'], 1, exif['BlueBalance']] for exif in exifs])
+  meta['ColorMatrix'] = np.array([[float(z) for z in exif['ColorMatrix'].split(' ')] for exif in exifs]) 
+  meta['ShutterSpeed'] = np.fromiter(
+    (1. / float(exif['ShutterSpeed'].split('/')[1]) for exif in exifs), float)
+  meta['NoiseProfile'] = np.array([[0.0, 0.0] for _ in exifs]) # setting to zero 
+  meta['WhiteLevel'] = np.array([float(exif['WhiteLevel'][0]) for exif in exifs])
+  meta['BlackLevel'] = np.array([float(exif['BlackLevel'][0]) for exif in exifs])
+
+  print(f"Shape of AsShotNeutral: {meta['AsShotNeutral'].shape}")
+  print(f"Shape of ColorMatrix: {meta['ColorMatrix'].shape}")
+  print(f"Shape of ShutterSpeed: {meta['ShutterSpeed'].shape}")
+  print(f"Shape of NoiseProfile: {meta['NoiseProfile'].shape}")
+  print(f"Shape of BlackLevel: {meta['BlackLevel'].shape}")
+  print(f"Shape of WhiteLevel: {meta['WhiteLevel'].shape}")
+
+  # Create raw-to-sRGB color transform matrices. Pipeline is:
+  # cam space -> white balanced cam space ("camwb") -> XYZ space -> RGB space.
+  # 'AsShotNeutral' is an RGB triplet representing how pure white would measure
+  # on the sensor, so dividing by these numbers corrects the white balance.
+  whitebalance = meta['AsShotNeutral'].reshape(-1, 3)
+  cam2camwb = np.array([np.diag(1. / x) for x in whitebalance])
+  # ColorMatrix2 converts from XYZ color space to "reference illuminant" (white
+  # balanced) camera space.
+  if 'ColorMatrix2' not in meta: # Andrew: Changed to accomodate Sony .arw files
+    xyz2camwb = meta['ColorMatrix'].reshape(-1, 3, 3)
+  else:
+    xyz2camwb = meta['ColorMatrix2'].reshape(-1, 3, 3)
+  rgb2camwb = xyz2camwb @ _RGB2XYZ
+  # We normalize the rows of the full color correction matrix, as is done in
+  # https://github.com/AbdoKamel/simple-camera-pipeline.
+  rgb2camwb /= rgb2camwb.sum(axis=-1, keepdims=True)
+  # Combining color correction with white balance gives the entire transform.
+  cam2rgb = np.linalg.inv(rgb2camwb) @ cam2camwb
+  meta['cam2rgb'] = cam2rgb
+
+  print(f"Shape of cam2rgb: {cam2rgb.shape}")
+  print(f"Shape of whitebalance: {whitebalance.shape}")
+  print(f"Shape of cam2camwb: {cam2camwb.shape}")
+  print(f"Shape of xyz2camwb: {xyz2camwb.shape}")
+  print(f"Shape of rgb2camwb: {rgb2camwb.shape}")
+
+  return meta
 
 def process_exif(
     exifs: Sequence[Mapping[str, Any]]) -> MutableMapping[str, Any]:
@@ -250,6 +316,13 @@ def process_exif(
   meta['ShutterSpeed'] = np.fromiter(
       (1. / float(exif['ShutterSpeed'].split('/')[1]) for exif in exifs), float)
 
+  print(f"Shape of AsShotNeutral: {meta['AsShotNeutral'].shape}")
+  print(f"Shape of ColorMatrix2: {meta['ColorMatrix2'].shape}")
+  print(f"Shape of ShutterSpeed: {meta['ShutterSpeed'].shape}")
+  print(f"Shape of NoiseProfile: {meta['NoiseProfile'].shape}")
+  print(f"Shape of BlackLevel: {meta['BlackLevel'].shape}")
+  print(f"Shape of WhiteLevel: {meta['WhiteLevel'].shape}")
+
   # Create raw-to-sRGB color transform matrices. Pipeline is:
   # cam space -> white balanced cam space ("camwb") -> XYZ space -> RGB space.
   # 'AsShotNeutral' is an RGB triplet representing how pure white would measure
@@ -266,6 +339,11 @@ def process_exif(
   # Combining color correction with white balance gives the entire transform.
   cam2rgb = np.linalg.inv(rgb2camwb) @ cam2camwb
   meta['cam2rgb'] = cam2rgb
+  print(f"Shape of cam2rgb: {cam2rgb.shape}")
+  print(f"Shape of whitebalance: {whitebalance.shape}")
+  print(f"Shape of cam2camwb: {cam2camwb.shape}")
+  print(f"Shape of xyz2camwb: {xyz2camwb.shape}")
+  print(f"Shape of rgb2camwb: {rgb2camwb.shape}")
 
   return meta
 
@@ -275,6 +353,7 @@ def load_raw_dataset(split: utils.DataSplit,
                      image_names: Sequence[str],
                      exposure_percentile: float,
                      n_downsample: int,
+                     use_sony: bool = False,
                      ) -> Tuple[np.ndarray, MutableMapping[str, Any], bool]:
   """Loads and processes a set of RawNeRF input images.
 
@@ -315,11 +394,16 @@ def load_raw_dataset(split: utils.DataSplit,
     else:
       # Discard the first COLMAP image name as it is a copy of the test image.
       image_names = image_names[1:]
-
-  raws, exifs = load_raw_images(image_dir, image_names)
-  meta = process_exif(exifs)
-
+  
+  if use_sony:
+    raws, exifs = load_raw_images(image_dir, image_names, file_extension='arw')
+    meta = process_exif_sony(exifs)
+  else:
+    raws, exifs = load_raw_images(image_dir, image_names)
+    meta = process_exif(exifs)
+  print(f"done getting raws and meta ")
   if testscene and split == utils.DataSplit.TEST:
+    print(f"Test scene and split == utils.DataSplit.TEST")
     # Test split for test scene must load the "ground truth" HDR+ merged image.
     with utils.open_file(testimg_file, 'rb') as imgin:
       testraw = rawpy.imread(imgin).raw_image
@@ -378,6 +462,7 @@ def load_raw_dataset(split: utils.DataSplit,
     x_demosaic_jax = bilinear_demosaic_jax(x_jax)
     if n_downsample > 1:
       x_demosaic_jax = lib_image.downsample(x_demosaic_jax, n_downsample)
+    print(f"Running processing_fn(), n_downsample: {n_downsample}, np.array(x_demosaic_jax).shape: {np.array(x_demosaic_jax).shape}")
     return np.array(x_demosaic_jax)
   images = np.stack([processing_fn(im) for im in images], axis=0)
 

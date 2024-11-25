@@ -35,6 +35,7 @@ import jax.numpy as jnp
 gin.config.external_configurable(math.safe_exp, module='math')
 gin.config.external_configurable(coord.contract, module='coord')
 
+import threading
 
 def random_split(rng):
   if rng is None:
@@ -219,6 +220,13 @@ class Model(nn.Module):
 
       # Push our Gaussians through one of our two MLPs.
       mlp = prop_mlp if is_prop else nerf_mlp
+      print(f"is_prop: {is_prop}")
+      print(f"Input shapes:")
+      print(f"  gaussians: {type(gaussians)}, {len(gaussians)}, {gaussians}")
+      if rays.viewdirs is not None:
+          print(f"  rays.viewdirs i: {rays.viewdirs.shape} {rays.viewdirs}")
+      print(f"  rays.imageplane: {rays.imageplane.shape} {rays.imageplane}")
+      # print(f"mlp: {mlp}")
       key, rng = random_split(rng)
       ray_results = mlp(
           key,
@@ -452,11 +460,19 @@ class MLP(nn.Module):
 
       inputs = x
       # Evaluate network to produce the output density.
+      accum = 0 
+      print(f"dense_layer: {dense_layer(self.net_width)}")
+      # dense_layer_1 = dense_layer(self.net_width)
       for i in range(self.net_depth):
+        print(f"{threading.current_thread().name} (input) x.shape: {x.shape}, self.net_width: {self.net_width}")
+        
         x = dense_layer(self.net_width)(x)
+        accum += x.shape[0]
+        print(f"{threading.current_thread().name} (output) x.shape: {x.shape}, accum: {accum}\n---")
         x = self.net_activation(x)
         if i % self.skip_layer == 0 and i > 0:
           x = jnp.concatenate([x, inputs], axis=-1)
+      print(f"Done for loop ------------------------")
       raw_density = dense_layer(1)(x)[..., 0]  # Hardcoded to a single channel.
       # Add noise to regularize the density predictions if needed.
       if (density_key is not None) and (self.density_noise > 0):
@@ -465,6 +481,7 @@ class MLP(nn.Module):
       return raw_density, x
 
     means, covs = gaussians
+    print(f"self.disable_density_normals: {self.disable_density_normals}")
     if self.disable_density_normals:
       raw_density, x = predict_density(means, covs)
       raw_grad_density = None
