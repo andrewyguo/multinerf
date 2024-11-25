@@ -222,10 +222,10 @@ class Model(nn.Module):
       mlp = prop_mlp if is_prop else nerf_mlp
       print(f"is_prop: {is_prop}")
       print(f"Input shapes:")
-      print(f"  gaussians: {type(gaussians)}, {len(gaussians)}, {gaussians}")
+      print(f"  gaussians: {type(gaussians)}, {len(gaussians)} g:{gaussians}")
       if rays.viewdirs is not None:
-          print(f"  rays.viewdirs i: {rays.viewdirs.shape} {rays.viewdirs}")
-      print(f"  rays.imageplane: {rays.imageplane.shape} {rays.imageplane}")
+          print(f"  rays.viewdirs shape: {rays.viewdirs.shape} | {rays.viewdirs}")
+      print(f"  rays.imageplane shape: {rays.imageplane.shape} | {rays.imageplane}")
       # print(f"mlp: {mlp}")
       key, rng = random_split(rng)
       ray_results = mlp(
@@ -464,11 +464,11 @@ class MLP(nn.Module):
       print(f"dense_layer: {dense_layer(self.net_width)}")
       # dense_layer_1 = dense_layer(self.net_width)
       for i in range(self.net_depth):
-        print(f"{threading.current_thread().name} (input) x.shape: {x.shape}, self.net_width: {self.net_width}")
+        print(f"{threading.current_thread().name} ({i}) (input) x.shape: {x.shape}, self.net_width: {self.net_width}")
         
         x = dense_layer(self.net_width)(x)
         accum += x.shape[0]
-        print(f"{threading.current_thread().name} (output) x.shape: {x.shape}, accum: {accum}\n---")
+        print(f"{threading.current_thread().name} ({i}) (output) x.shape: {x.shape}, accum: {accum}\n---")
         x = self.net_activation(x)
         if i % self.skip_layer == 0 and i > 0:
           x = jnp.concatenate([x, inputs], axis=-1)
@@ -667,6 +667,7 @@ def render_image(render_fn: Callable[[jnp.array, utils.Rays],
   host_id = jax.process_index()
   chunks = []
   idx0s = range(0, num_rays, config.render_chunk_size)
+  print(f"config.render_chunk_size: {config.render_chunk_size}")
   for i_chunk, idx0 in enumerate(idx0s):
     # pylint: disable=cell-var-from-loop
     if verbose and i_chunk % max(1, len(idx0s) // 10) == 0:

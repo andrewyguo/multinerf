@@ -704,6 +704,7 @@ class LLFF(Dataset):
     all_indices = np.arange(images.shape[0])
     if config.llff_use_all_images_for_training or raw_testscene:
       train_indices = all_indices
+      print(f"config.llff_use_all_images_for_training: {config.llff_use_all_images_for_training}. Using all images for training.")
     else:
       train_indices = all_indices % config.llffhold != 0
     split_indices = {

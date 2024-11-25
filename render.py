@@ -104,6 +104,7 @@ def main(unused_argv):
   key = random.PRNGKey(20200823)
   _, state, render_eval_pfn, _, _ = train_utils.setup_model(config, key)
 
+  print(f"done setup_model() in render.py")
   if config.rawnerf_mode:
     postprocess_fn = dataset.metadata['postprocess_fn']
   else:
@@ -151,6 +152,7 @@ def main(unused_argv):
     print(f'Evaluating image {idx+1}/{dataset.size}')
     eval_start_time = time.time()
     rays = dataset.generate_ray_batch(idx).rays
+    print(f"shape of rays - main() in render.py: origins: {rays.origins.shape}, directions: {rays.directions.shape}, viewdirs: {rays.viewdirs.shape}, radii: {rays.radii.shape}, imageplane: {rays.imageplane.shape}, lossmult: {rays.lossmult.shape}, near: {rays.near.shape}, far: {rays.far.shape}, cam_idx: {rays.cam_idx.shape}")
     train_frac = 1.
     rendering = models.render_image(
         functools.partial(render_eval_pfn, state.params, train_frac),
